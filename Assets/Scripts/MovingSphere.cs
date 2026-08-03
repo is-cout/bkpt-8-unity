@@ -159,6 +159,11 @@ public class MovingSphere : MonoBehaviour
         }
     }
 
+    public void PreventSnapToGround()
+    {
+        stepsSinceLastJump = -1;
+    }
+
     private void EvaluateCollision(Collision collision)
     {
         if (Swimming)
