@@ -238,8 +238,12 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MovingSphere
   maxSpeed: 10
+  maxClimbSpeed: 2
+  maxSwimSpeed: 5
   maxAcceleration: 10
   maxAirAcceleration: 1
+  maxClimbAcceleration: 20
+  maxSwimAcceleration: 5
   jumpHeight: 2
   maxAirJumps: 0
   maxGroundAngle: 25
@@ -249,16 +253,25 @@ MonoBehaviour:
   probeDistance: 1
   probeMask:
     serializedVersion: 2
-    m_Bits: 1075
+    m_Bits: 7203
   stairsMask:
     serializedVersion: 2
     m_Bits: 1024
   climbMask:
     serializedVersion: 2
-    m_Bits: 1331
+    m_Bits: 5411
+  waterMask:
+    serializedVersion: 2
+    m_Bits: 16
   playerInputSpace: {fileID: 0}
   normalMaterial: {fileID: 2100000, guid: dea9a7a64d2db814e969cebcbb49ba02, type: 2}
   climbingMaterial: {fileID: 2100000, guid: ddf16cee732bfb7488e7c30ee8263a9c, type: 2}
+  swimmingMaterial: {fileID: 2100000, guid: 11ef9cf1db52ff64d8b2e70d5d0db79c, type: 2}
+  submergenceOffset: 0.5
+  submergenceRange: 1
+  waterDrag: 1
+  buoyancy: 1
+  swimThreshold: 0.5
 --- !u!54 &4542064660386021709
 Rigidbody:
   m_ObjectHideFlags: 0
