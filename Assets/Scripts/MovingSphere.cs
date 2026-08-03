@@ -4,7 +4,9 @@ public class MovingSphere : MonoBehaviour
 {
     [SerializeField, Range(0f, 100f)] private float maxSpeed = 10f, maxClimbSpeed = 2f, maxSwimSpeed = 5f;
     [SerializeField, Range(0f, 100f)]
-    private float maxAcceleration = 10f, maxAirAcceleration = 1f, maxClimbAcceleration = 20f,
+    private float maxAcceleration = 10f,
+        maxAirAcceleration = 1f,
+        maxClimbAcceleration = 20f,
         maxSwimAcceleration = 5f;
     [SerializeField, Range(0f, 10f)] private float jumpHeight = 2f;
     [SerializeField, Range(0, 5)] private int maxAirJumps = 0;
@@ -13,13 +15,16 @@ public class MovingSphere : MonoBehaviour
     [SerializeField, Range(0f, 100f)] private float maxSnapSpeed = 100f;
     [SerializeField, Min(0f)] private float probeDistance = 1f;
     [SerializeField] private LayerMask probeMask = -1, stairsMask = -1, climbMask = -1, waterMask = 0;
-    [SerializeField] private Transform playerInputSpace = default;
+    [SerializeField] private Transform playerInputSpace = default, ball = default;
     [SerializeField] private Material normalMaterial = default, climbingMaterial = default, swimmingMaterial = default;
     [SerializeField] private float submergenceOffset = 0.5f;
     [SerializeField, Min(0.1f)] private float submergenceRange = 1f;
     [SerializeField, Range(0f, 10f)] private float waterDrag = 1f;
     [SerializeField, Min(0f)] private float buoyancy = 1f;
     [SerializeField, Range(0.01f, 1f)] private float swimThreshold = 0.5f;
+    [SerializeField, Min(0.1f)] private float ballRadius = 0.5f;
+    [SerializeField, Min(0f)] private float ballAlignSpeed = 180f;
+    [SerializeField, Min(0f)] private float ballAirRotation = 0.5f, ballSwimRotation = 2f;
 
     private Vector3 playerInput;
     private Vector3 velocity, connectionVelocity;
@@ -34,6 +39,7 @@ public class MovingSphere : MonoBehaviour
     private Vector3 connectionWorldPosition, connectionLocalPosition;
     private MeshRenderer meshRenderer;
     private float submergence;
+    private Vector3 lastContactNormal, lastSteepNormal, lastConnectionVelocity;
 
     private bool OnGround => groundContactCount > 0;
     private bool OnSteep => steepContactCount > 0;
@@ -46,7 +52,7 @@ public class MovingSphere : MonoBehaviour
         body = GetComponent<Rigidbody>();
         body.useGravity = false;
 
-        meshRenderer = GetComponent<MeshRenderer>();
+        meshRenderer = ball.GetComponent<MeshRenderer>();
 
         OnValidate(); // i do not like this
     }
@@ -61,8 +67,8 @@ public class MovingSphere : MonoBehaviour
     private void Update()
     {
         playerInput.x = Input.GetAxis("Horizontal");
-        playerInput.y = Input.GetAxis("Vertical");
-        playerInput.z = Swimming ? Input.GetAxis("UpDown") : 0f;
+        playerInput.z = Input.GetAxis("Vertical");
+        playerInput.y = Swimming ? Input.GetAxis("UpDown") : 0f;
 
         playerInput = Vector3.ClampMagnitude(playerInput, 1f);
 
@@ -87,7 +93,7 @@ public class MovingSphere : MonoBehaviour
             desiresClimbing = Input.GetButton("Climb");
         }
 
-        meshRenderer.material = Climbing ? climbingMaterial : Swimming ? swimmingMaterial : normalMaterial;
+        UpdateBall();
     }
 
     private void FixedUpdate()
@@ -311,6 +317,10 @@ public class MovingSphere : MonoBehaviour
 
     private void ClearState()
     {
+        lastContactNormal = contactNormal;
+        lastSteepNormal = steepNormal;
+        lastConnectionVelocity = connectionVelocity;
+
         groundContactCount = steepContactCount = climbContactCount = 0;
         contactNormal = steepNormal = climbNormal = connectionVelocity = Vector3.zero;
 
@@ -360,22 +370,19 @@ public class MovingSphere : MonoBehaviour
         zAxis = ProjectDirectionOnPlane(zAxis, contactNormal);
 
         Vector3 relativeVelocity = velocity - connectionVelocity;
-        float currentX = Vector3.Dot(relativeVelocity, xAxis);
-        float currentZ = Vector3.Dot(relativeVelocity, zAxis);
 
-        float maxSpeedChange = acceleration * Time.deltaTime;
+        Vector3 adjustment;
+        adjustment.x = playerInput.x * speed - Vector3.Dot(relativeVelocity, xAxis);
+        adjustment.z = playerInput.z * speed - Vector3.Dot(relativeVelocity, zAxis);
+        adjustment.y = Swimming ? playerInput.y * speed - Vector3.Dot(relativeVelocity, upAxis) : 0f;
 
-        float newX = Mathf.MoveTowards(currentX, playerInput.x * speed, maxSpeedChange);
-        float newZ = Mathf.MoveTowards(currentZ, playerInput.y * speed, maxSpeedChange);
+        adjustment = Vector3.ClampMagnitude(adjustment, acceleration * Time.deltaTime);
 
-        velocity += xAxis * (newX - currentX) + zAxis * (newZ - currentZ);
+        velocity += xAxis * adjustment.x + zAxis * adjustment.z;
 
         if (Swimming)
         {
-            float currentY = Vector3.Dot(relativeVelocity, upAxis);
-            float newY = Mathf.MoveTowards(currentY, playerInput.z * speed, maxSpeedChange);
-
-            velocity += upAxis * (newY - currentY);
+            velocity += upAxis * adjustment.y;
         }
     }
 
@@ -484,5 +491,87 @@ public class MovingSphere : MonoBehaviour
         }
 
         return false;
+    }
+
+    private void UpdateBall()
+    {
+        Material ballMaterial = normalMaterial;
+        Vector3 rotationPlaneNormal = lastContactNormal;
+        float rotationFactor = 1f;
+
+        if (Climbing)
+        {
+            ballMaterial = climbingMaterial;
+        }
+        else if (Swimming)
+        {
+            ballMaterial = swimmingMaterial;
+            rotationFactor = ballSwimRotation;
+        }
+        else if (!OnGround)
+        {
+            if (OnSteep)
+            {
+                rotationPlaneNormal = lastSteepNormal;
+            }
+            else
+            {
+                rotationFactor = ballAirRotation;
+            }
+        }
+
+        meshRenderer.material = ballMaterial;
+
+        Vector3 movement = (body.linearVelocity - lastConnectionVelocity) * Time.deltaTime;
+        movement -= rotationPlaneNormal * Vector3.Dot(movement, rotationPlaneNormal);
+
+        float distance = movement.magnitude;
+
+        Quaternion rotation = ball.localRotation;
+        if (connectedBody && connectedBody == previousConnectedBody)
+        {
+            rotation = Quaternion.Euler(
+                connectedBody.angularVelocity * (Mathf.Rad2Deg * Time.deltaTime)
+            ) * rotation;
+            if (distance < 0.001f)
+            {
+                ball.localRotation = rotation;
+                return;
+            }
+        }
+        else if (distance < 0.001f)
+        {
+            return;
+        }
+
+        float angle = distance * rotationFactor * (180f / Mathf.PI) / ballRadius;
+
+        Vector3 rotationAxis = Vector3.Cross(rotationPlaneNormal, movement).normalized;
+        rotation = Quaternion.Euler(rotationAxis * angle) * ball.localRotation;
+
+        if (ballAlignSpeed > 0f)
+        {
+            rotation = AlignBallRotation(rotationAxis, rotation, distance);
+        }
+
+        ball.localRotation = rotation;
+    }
+
+    Quaternion AlignBallRotation(Vector3 rotationAxis, Quaternion rotation, float traveledDistance)
+    {
+        Vector3 ballAxis = ball.up;
+        float dot = Mathf.Clamp(Vector3.Dot(ballAxis, rotationAxis), -1f, 1f);
+        float angle = Mathf.Acos(dot) * Mathf.Rad2Deg;
+        float maxAngle = ballAlignSpeed * traveledDistance;
+
+        Quaternion newAlignment = Quaternion.FromToRotation(ballAxis, rotationAxis) * rotation;
+        if (angle <= maxAngle)
+        {
+            return newAlignment;
+        }
+        else
+        {
+            return Quaternion.SlerpUnclamped(rotation, newAlignment, maxAngle / angle);
+        }
     }
 }
