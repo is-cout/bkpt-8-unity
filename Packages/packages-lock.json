@@ -1,5 +1,12 @@
 {
   "dependencies": {
+    "com.popcron.gizmos": {
+      "version": "https://github.com/popcron/gizmos.git",
+      "depth": 0,
+      "source": "git",
+      "dependencies": {},
+      "hash": "676901ae8b74471762f89f0e85172a2402c6a0fd"
+    },
     "com.unity.ai.navigation": {
       "version": "2.0.14",
       "depth": 0,
